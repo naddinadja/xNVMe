@@ -174,13 +174,22 @@ static int
 submit_io(struct xnvmeperf_job *job, struct xnvme_cmd_ctx *ctx)
 {
 	uint64_t slba = job->get_slba(job);
+	int err;
 
 	ctx->cmd.common.opcode = job->opcode;
 	ctx->cmd.common.nsid = job->nsid;
 	ctx->cmd.nvm.nlb = job->nlb - 1;
 	ctx->cmd.nvm.slba = slba;
 
-	return xnvme_cmd_pass(ctx, job->buf, (job->nbytes * job->nlb), NULL, 0);
+submit:
+	err = xnvme_cmd_pass(ctx, job->buf, (job->nbytes * job->nlb), NULL, 0);
+
+	if (err == -EBUSY || err == -EAGAIN) {
+		xnvme_queue_poke(ctx->async.queue, 0);
+		goto submit;
+	}
+
+	return err;
 }
 
 /**
